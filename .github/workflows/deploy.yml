@@ -25,19 +25,19 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           MONITORING_HOST: ${{ secrets.MONITORING_HOST }}
+          PROMETHEUS_URL: ${{ secrets.PROMETHEUS_URL }}
         with:
           host: ${{ secrets.OCI_HOST }}
           username: ${{ secrets.OCI_USERNAME }}
           key: ${{ secrets.OCI_KEY }}
           timeout: 600s
-          envs: FRONTEND_URL,DB_URL,DB_USERNAME,DB_PASSWORD,REDIS_URL,JWT_SECRET,GEMINI_API_KEY,GEMINI_PROJECT_ID,GHCR_TOKEN,GHCR_USERNAME,MONITORING_HOST
+          envs: FRONTEND_URL,DB_URL,DB_USERNAME,DB_PASSWORD,REDIS_URL,JWT_SECRET,GEMINI_API_KEY,GEMINI_PROJECT_ID,GHCR_TOKEN,GHCR_USERNAME,MONITORING_HOST,PROMETHEUS_URL
           script: |
             set -euo pipefail
             trap 'echo "❌ 실패한 줄: $LINENO, 명령어: $BASH_COMMAND"' ERR
 
             LOCK_FILE=/var/tmp/msa_deploy.lock
             
-            # flock을 이용하여 이 스크립트 블록 전체를 순차적으로 실행 (최대 10분 대기)
             exec 200>|"$LOCK_FILE"
             echo "⏳ 락(Lock) 획득 대기 중..."
             if ! flock -w 600 200; then
@@ -67,6 +67,7 @@ jobs:
               "JWT_SECRET" "GEMINI_API_KEY" "GEMINI_PROJECT_ID"
               "GHCR_TOKEN" "GHCR_USERNAME"
               "MONITORING_HOST"
+              "PROMETHEUS_URL"
             )
             for VAR_NAME in "${REQUIRED_VARS[@]}"; do
               if [[ -z "${!VAR_NAME}" ]]; then
@@ -199,6 +200,7 @@ jobs:
             printf 'JWT_SECRET=%s\n' "$JWT_SECRET" >> .env.tmp
             printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY" >> .env.tmp
             printf 'GEMINI_PROJECT_ID=%s\n' "$GEMINI_PROJECT_ID" >> .env.tmp
+            printf 'PROMETHEUS_URL=%s\n' "$PROMETHEUS_URL" >> .env.tmp
 
             if [[ "$SERVICE_NAME" == "gateway-server" ]]; then
               printf 'GATEWAY_TAG=%s\n' "$IMAGE_TAG" >> .env.tmp
@@ -223,7 +225,6 @@ jobs:
             fi
 
             mv .env.tmp .env
-            # 600 권한은 이미 umask 077로 생성될 때 보장되나 명시적 확인 위해 (필요시 제거 가능)
             chmod 600 .env
 
             {
@@ -286,6 +287,7 @@ jobs:
               printf '      - APP_JWT_SECRET=${JWT_SECRET}\n'
               printf '      - SPRING_AI_GOOGLE_GENAI_API_KEY=${GEMINI_API_KEY}\n'
               printf '      - SPRING_AI_GOOGLE_GENAI_PROJECT_ID=${GEMINI_PROJECT_ID}\n'
+              printf '      - METRICS_PROMETHEUS_URL=${PROMETHEUS_URL}\n'
               printf '    networks:\n'
               printf '      - msa-network\n'
               printf '    healthcheck:\n'
