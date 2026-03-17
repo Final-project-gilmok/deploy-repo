@@ -26,13 +26,12 @@ jobs:
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           MONITORING_HOST: ${{ secrets.MONITORING_HOST }}
           PROMETHEUS_URL: ${{ secrets.PROMETHEUS_URL }}
-          GATEWAY_PUBLIC_URL: ${{ secrets.GATEWAY_PUBLIC_URL }}
         with:
           host: ${{ secrets.OCI_HOST }}
           username: ${{ secrets.OCI_USERNAME }}
           key: ${{ secrets.OCI_KEY }}
           timeout: 600s
-          envs: FRONTEND_URL,DB_URL,DB_USERNAME,DB_PASSWORD,REDIS_URL,JWT_SECRET,GEMINI_API_KEY,GEMINI_PROJECT_ID,GHCR_TOKEN,GHCR_USERNAME,MONITORING_HOST,PROMETHEUS_URL,GATEWAY_PUBLIC_URL
+          envs: FRONTEND_URL,DB_URL,DB_USERNAME,DB_PASSWORD,REDIS_URL,JWT_SECRET,GEMINI_API_KEY,GEMINI_PROJECT_ID,GHCR_TOKEN,GHCR_USERNAME,MONITORING_HOST,PROMETHEUS_URL
           script: |
             set -euo pipefail
             trap 'echo "❌ 실패한 줄: $LINENO, 명령어: $BASH_COMMAND"' ERR
@@ -69,7 +68,6 @@ jobs:
               "GHCR_TOKEN" "GHCR_USERNAME"
               "MONITORING_HOST"
               "PROMETHEUS_URL"
-              "GATEWAY_PUBLIC_URL"
             )
             for VAR_NAME in "${REQUIRED_VARS[@]}"; do
               if [[ -z "${!VAR_NAME}" ]]; then
@@ -227,7 +225,6 @@ jobs:
             printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY" >> .env.tmp
             printf 'GEMINI_PROJECT_ID=%s\n' "$GEMINI_PROJECT_ID" >> .env.tmp
             printf 'PROMETHEUS_URL=%s\n' "$PROMETHEUS_URL" >> .env.tmp
-            printf 'GATEWAY_PUBLIC_URL=%s\n' "$GATEWAY_PUBLIC_URL" >> .env.tmp
 
             if [[ "$SERVICE_NAME" == "gateway-server" ]]; then
               printf 'GATEWAY_TAG=%s\n' "$IMAGE_TAG" >> .env.tmp
@@ -285,7 +282,6 @@ jobs:
                 printf '      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}\n'
                 printf '      - SPRING_DATA_REDIS_URL=${REDIS_URL}\n'
                 printf '      - APP_JWT_SECRET=${JWT_SECRET}\n'
-                printf '      - GATEWAY_URL=${GATEWAY_PUBLIC_URL}\n'
                 printf '    extra_hosts:\n'
                 printf '      - "host.docker.internal:host-gateway"\n'
                 printf '    networks:\n'
