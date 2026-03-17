@@ -140,6 +140,9 @@ jobs:
                 printf '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n'
                 printf '  }\n\n'
             
+                printf '  location = /swagger-ui {\n'
+                printf '    return 301 /swagger-ui/;\n'
+                printf '  }\n\n'
                 printf '  location /swagger-ui/ {\n'
                 printf '    proxy_pass http://gateway_backend;\n'
                 printf '    proxy_set_header Host $host;\n'
