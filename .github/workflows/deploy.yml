@@ -27,9 +27,12 @@ jobs:
           MONITORING_HOST: ${{ secrets.MONITORING_HOST }}
           PROMETHEUS_URL: ${{ secrets.PROMETHEUS_URL }}
         with:
-          host: ${{ secrets.OCI_HOST }}
-          username: ${{ secrets.OCI_USERNAME }}
-          key: ${{ secrets.OCI_KEY }}
+#          host: ${{ secrets.OCI_HOST }}
+#          username: ${{ secrets.OCI_USERNAME }}
+#          key: ${{ secrets.OCI_KEY }}
+          host: ${{ secrets.AWS_EC2_HOST }}
+          username: ${{ secrets.AWS_EC2_USERNAME }}
+          key: ${{ secrets.AWS_EC2_KEY }}
           timeout: 600s
           envs: FRONTEND_URL,DB_URL,DB_USERNAME,DB_PASSWORD,REDIS_URL,JWT_SECRET,GEMINI_API_KEY,GEMINI_PROJECT_ID,GHCR_TOKEN,GHCR_USERNAME,MONITORING_HOST,PROMETHEUS_URL
           script: |
