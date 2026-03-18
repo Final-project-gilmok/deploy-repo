@@ -11,10 +11,34 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
+      - name: Resolve deploy parameters
+        id: params
+        run: |
+          TARGET="${{ github.event.client_payload.target }}"
+          TARGET="${TARGET:-oci}"   # target 없으면 기본값 oci (기존 트리거 호환)
+          echo "target=$TARGET" >> $GITHUB_OUTPUT
+          echo "service_name=${{ github.event.client_payload.service_name }}" >> $GITHUB_OUTPUT
+          echo "image_tag=${{ github.event.client_payload.image_tag }}" >> $GITHUB_OUTPUT
+
+          if [ "$TARGET" = "aws" ]; then
+            echo "frontend_url=${{ secrets.AWS_FRONTEND_URL }}"       >> $GITHUB_OUTPUT
+            echo "monitoring_host=${{ secrets.AWS_MONITORING_HOST }}" >> $GITHUB_OUTPUT
+            echo "prometheus_url=${{ secrets.AWS_PROMETHEUS_URL }}"   >> $GITHUB_OUTPUT
+          else
+            echo "frontend_url=${{ secrets.OCI_FRONTEND_URL }}"       >> $GITHUB_OUTPUT
+            echo "monitoring_host=${{ secrets.OCI_MONITORING_HOST }}" >> $GITHUB_OUTPUT
+            echo "prometheus_url=${{ secrets.OCI_PROMETHEUS_URL }}"   >> $GITHUB_OUTPUT
+          fi
+
       - name: SSH Remote Commands
         uses: appleboy/ssh-action@v1.0.3
         env:
-          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          FRONTEND_URL: ${{ steps.params.outputs.frontend_url }}
+          MONITORING_HOST: ${{ steps.params.outputs.monitoring_host }}
+          PROMETHEUS_URL: ${{ steps.params.outputs.prometheus_url }}
+          DEPLOY_SERVICE_NAME: ${{ steps.params.outputs.service_name }}
+          DEPLOY_IMAGE_TAG: ${{ steps.params.outputs.image_tag }}
+          DEPLOY_TARGET: ${{ steps.params.outputs.target }}
           DB_URL: ${{ secrets.DB_URL }}
           DB_USERNAME: ${{ secrets.DB_USERNAME }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
@@ -24,17 +48,12 @@ jobs:
           GEMINI_PROJECT_ID: ${{ secrets.GEMINI_PROJECT_ID }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
-          MONITORING_HOST: ${{ secrets.MONITORING_HOST }}
-          PROMETHEUS_URL: ${{ secrets.PROMETHEUS_URL }}
         with:
-#          host: ${{ secrets.OCI_HOST }}
-#          username: ${{ secrets.OCI_USERNAME }}
-#          key: ${{ secrets.OCI_KEY }}
-          host: ${{ secrets.AWS_EC2_HOST }}
-          username: ${{ secrets.AWS_EC2_USERNAME }}
-          key: ${{ secrets.AWS_EC2_KEY }}
+          host: ${{ steps.params.outputs.target == 'aws' && secrets.AWS_EC2_HOST || secrets.OCI_HOST }}
+          username: ${{ steps.params.outputs.target == 'aws' && secrets.AWS_EC2_USERNAME || secrets.OCI_USERNAME }}
+          key: ${{ steps.params.outputs.target == 'aws' && secrets.AWS_EC2_KEY || secrets.OCI_KEY }}
           timeout: 600s
-          envs: FRONTEND_URL,DB_URL,DB_USERNAME,DB_PASSWORD,REDIS_URL,JWT_SECRET,GEMINI_API_KEY,GEMINI_PROJECT_ID,GHCR_TOKEN,GHCR_USERNAME,MONITORING_HOST,PROMETHEUS_URL
+          envs: FRONTEND_URL,MONITORING_HOST,PROMETHEUS_URL,DEPLOY_SERVICE_NAME,DEPLOY_IMAGE_TAG,DEPLOY_TARGET,DB_URL,DB_USERNAME,DB_PASSWORD,REDIS_URL,JWT_SECRET,GEMINI_API_KEY,GEMINI_PROJECT_ID,GHCR_TOKEN,GHCR_USERNAME
           script: |
             set -euo pipefail
             trap 'echo "❌ 실패한 줄: $LINENO, 명령어: $BASH_COMMAND"' ERR
@@ -51,8 +70,8 @@ jobs:
 
             echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
-            SERVICE_NAME="${{ github.event.client_payload.service_name }}"
-            IMAGE_TAG="${{ github.event.client_payload.image_tag }}"
+            SERVICE_NAME="$DEPLOY_SERVICE_NAME"
+            IMAGE_TAG="$DEPLOY_IMAGE_TAG"
 
             case "$SERVICE_NAME" in
               gateway-server|api-server|auth-server|frontend-server) ;;
