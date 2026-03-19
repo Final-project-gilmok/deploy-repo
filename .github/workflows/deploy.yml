@@ -52,7 +52,7 @@ jobs:
           host: ${{ steps.params.outputs.target == 'aws' && secrets.AWS_EC2_HOST || secrets.OCI_HOST }}
           username: ${{ steps.params.outputs.target == 'aws' && secrets.AWS_EC2_USERNAME || secrets.OCI_USERNAME }}
           key: ${{ steps.params.outputs.target == 'aws' && secrets.AWS_EC2_KEY || secrets.OCI_KEY }}
-          timeout: 600s
+          timeout: 1200s
           envs: FRONTEND_URL,MONITORING_HOST,PROMETHEUS_URL,DEPLOY_SERVICE_NAME,DEPLOY_IMAGE_TAG,DEPLOY_TARGET,DB_URL,DB_USERNAME,DB_PASSWORD,REDIS_URL,JWT_SECRET,GEMINI_API_KEY,GEMINI_PROJECT_ID,GHCR_TOKEN,GHCR_USERNAME
           script: |
             set -euo pipefail
@@ -62,7 +62,7 @@ jobs:
             
             exec 200>|"$LOCK_FILE"
             echo "⏳ 락(Lock) 획득 대기 중..."
-            if ! flock -w 600 200; then
+            if ! flock -w 1200 200; then
               echo "❌ Error: 다른 배포 작업이 너무 오래 걸려 락 획득에 실패했습니다."
               exit 1
             fi
@@ -111,7 +111,7 @@ jobs:
             }
 
             is_nginx_running() {
-              [ "$(sudo docker ps --filter name=^nginx$ --format '{{.Names}}')" = "nginx" ]
+              [ "$(sudo docker ps -f name=^nginx$ -f status=running --format '{{.Names}}')" = "nginx" ]
             }
 
             start_and_verify_nginx() {
@@ -139,6 +139,7 @@ jobs:
                 printf '}\n\n'
                 printf 'server {\n'
                 printf '  listen 80;\n\n'
+                printf '  resolver 127.0.0.11 valid=10s;\n\n'
 
                 printf '  location /grafana {\n'
                 printf '    return 301 /grafana/;\n'
@@ -154,7 +155,8 @@ jobs:
                 printf '  }\n\n'
 
                 printf '  location / {\n'
-                printf '    proxy_pass http://frontend:8080;\n'
+                printf '    set $frontend_upstream http://frontend:8080;\n'
+                printf '    proxy_pass $frontend_upstream;\n'
                 printf '    proxy_set_header Host $host;\n'
                 printf '    proxy_set_header X-Real-IP $remote_addr;\n'
                 printf '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n'
@@ -367,7 +369,7 @@ jobs:
               printf '      start_period: 90s\n\n'
 
               printf '  frontend:\n'
-              printf '    image: ghcr.io/final-project-gilmok/api-repo/frontend:${FRONTEND_TAG:-latest}\n'
+              printf '    image: ghcr.io/final-project-gilmok/api-repo/frontend:${FRONTEND_TAG:-latest-%s}\n' "$DEPLOY_TARGET"
               printf '    container_name: frontend\n'
               printf '    expose:\n'
               printf '      - "8080"\n'
@@ -421,12 +423,22 @@ jobs:
               render_nginx_conf "gateway-$TARGET_COLOR"
 
               if is_nginx_running; then
-                if ! sudo docker exec nginx nginx -t; then
-                  echo "⬅️ Nginx config test failed. Rolling back..."
-                  cp ./nginx/conf.d/default.conf.bak ./nginx/conf.d/default.conf
-                  exit 1
+                if ! NGINX_TEST_OUT=$(sudo docker exec nginx nginx -t 2>&1); then
+                  if echo "$NGINX_TEST_OUT" | grep -qi "restarting"; then
+                    echo "⚠️ Nginx is in a restart loop. Forcing recreate..."
+                    if ! start_and_verify_nginx; then
+                      cp ./nginx/conf.d/default.conf.bak ./nginx/conf.d/default.conf
+                      exit 1
+                    fi
+                  else
+                    echo "$NGINX_TEST_OUT"
+                    echo "⬅️ Nginx config test failed. Rolling back..."
+                    cp ./nginx/conf.d/default.conf.bak ./nginx/conf.d/default.conf
+                    exit 1
+                  fi
+                else
+                  sudo docker exec nginx nginx -s reload
                 fi
-                sudo docker exec nginx nginx -s reload
               else
                 if ! start_and_verify_nginx; then
                   cp ./nginx/conf.d/default.conf.bak ./nginx/conf.d/default.conf
