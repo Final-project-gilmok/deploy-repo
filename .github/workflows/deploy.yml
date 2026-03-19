@@ -367,7 +367,7 @@ jobs:
               printf '      start_period: 90s\n\n'
 
               printf '  frontend:\n'
-              printf '    image: ghcr.io/final-project-gilmok/api-repo/frontend:${FRONTEND_TAG:-latest}\n'
+              printf '    image: ghcr.io/final-project-gilmok/api-repo/frontend:${FRONTEND_TAG:-latest-%s}\n' "$DEPLOY_TARGET"
               printf '    container_name: frontend\n'
               printf '    expose:\n'
               printf '      - "8080"\n'
