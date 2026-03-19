@@ -111,7 +111,7 @@ jobs:
             }
 
             is_nginx_running() {
-              [ "$(sudo docker ps --filter name=^nginx$ --format '{{.Names}}')" = "nginx" ]
+              [ "$(sudo docker ps -f name=^nginx$ -f status=running --format '{{.Names}}')" = "nginx" ]
             }
 
             start_and_verify_nginx() {
@@ -139,6 +139,7 @@ jobs:
                 printf '}\n\n'
                 printf 'server {\n'
                 printf '  listen 80;\n\n'
+                printf '  resolver 127.0.0.11 valid=10s;\n\n'
 
                 printf '  location /grafana {\n'
                 printf '    return 301 /grafana/;\n'
@@ -154,7 +155,8 @@ jobs:
                 printf '  }\n\n'
 
                 printf '  location / {\n'
-                printf '    proxy_pass http://frontend:8080;\n'
+                printf '    set $frontend_upstream http://frontend:8080;\n'
+                printf '    proxy_pass $frontend_upstream;\n'
                 printf '    proxy_set_header Host $host;\n'
                 printf '    proxy_set_header X-Real-IP $remote_addr;\n'
                 printf '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n'
@@ -421,12 +423,22 @@ jobs:
               render_nginx_conf "gateway-$TARGET_COLOR"
 
               if is_nginx_running; then
-                if ! sudo docker exec nginx nginx -t; then
-                  echo "⬅️ Nginx config test failed. Rolling back..."
-                  cp ./nginx/conf.d/default.conf.bak ./nginx/conf.d/default.conf
-                  exit 1
+                if ! NGINX_TEST_OUT=$(sudo docker exec nginx nginx -t 2>&1); then
+                  if echo "$NGINX_TEST_OUT" | grep -qi "restarting"; then
+                    echo "⚠️ Nginx is in a restart loop. Forcing recreate..."
+                    if ! start_and_verify_nginx; then
+                      cp ./nginx/conf.d/default.conf.bak ./nginx/conf.d/default.conf
+                      exit 1
+                    fi
+                  else
+                    echo "$NGINX_TEST_OUT"
+                    echo "⬅️ Nginx config test failed. Rolling back..."
+                    cp ./nginx/conf.d/default.conf.bak ./nginx/conf.d/default.conf
+                    exit 1
+                  fi
+                else
+                  sudo docker exec nginx nginx -s reload
                 fi
-                sudo docker exec nginx nginx -s reload
               else
                 if ! start_and_verify_nginx; then
                   cp ./nginx/conf.d/default.conf.bak ./nginx/conf.d/default.conf
